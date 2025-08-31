@@ -12,16 +12,9 @@
     <style>
         body {
             font-family: 'Inter', sans-serif;
-            /* Default for mobile/tablet to prevent scrolling */
-            overflow: hidden; 
+            /* REMOVED overflow:hidden to allow scrolling on all devices */
         }
-
-        /* On desktop devices (1024px and wider), allow scrolling */
-        @media (min-width: 1024px) {
-            body {
-                overflow: auto;
-            }
-        }
+        
         #video-container {
             position: relative;
             width: 100%;
@@ -104,7 +97,7 @@
     
     <footer class="w-full text-center py-6 mt-auto">
         <p class="text-gray-500 text-sm">
-            © 2025 AI Face Analysis. Designed & Built by Harsh Singh Kshetrimayum. All Rights Reserved.
+            © 2025 AI Face Analysis. All Rights Reserved.
         </p>
     </footer>
 
