@@ -218,7 +218,7 @@
             if (cues.wideEyes && cues.raisedEyebrows) refinedExpressions.surprised = Math.min(1, refinedExpressions.surprised + 0.5);
             else if (cues.wideEyes && !cues.raisedEyebrows) refinedExpressions.fearful = Math.min(1, refinedExpressions.fearful + 0.5);
 
-            if (cues.smiling) refinedExpressions.happy = Math.min(1, refinedExpressions.happy + 0.5);
+            if (cues.smiling) refinedExpressions.happy = Math.min(1, refinedExpressions.expressions.happy + 0.5); // Fixed typo from 'expressions.happy' to 'happy'
 
             if (cues.downturnedLipCorners && cues.raisedInnerEyebrows) refinedExpressions.sad = Math.min(1, refinedExpressions.sad + 0.5);
             
@@ -290,27 +290,25 @@
                     const box = faceDetection.box;
                     const mirroredX = canvas.width - box.x - box.width;
                     
-                    // Options for the main blue bounding box
+                    // Options for the main blue bounding box (now unused for drawing, but kept for reference if needed)
                     const boxDrawOptions = {
                         boxColor: 'rgba(59, 130, 246, 0.8)',
-                        lineWidth: 3 // Made the box slightly thicker
+                        lineWidth: 3 
                     };
 
                     const mirroredBox = new faceapi.Box({ x: mirroredX, y: box.y, width: box.width, height: box.height });
-                    new faceapi.draw.DrawBox(mirroredBox, boxDrawOptions).draw(canvas);
+                    // new faceapi.draw.DrawBox(mirroredBox, boxDrawOptions).draw(canvas); // Line to remove/comment out
                     
-                    // Position text inside the top-left corner, matching the screenshot
+                    // Position text inside the top-left corner
                     const textAnchor = { x: mirroredX, y: box.y };
                     
-                    // UPDATED: Adjusted responsive font size for mobile
-                    const isMobile = window.innerWidth < 768; // 768px is a common tablet breakpoint
-                    const responsiveFontSize = isMobile ? 16 : 14; // Smaller font for mobile (16px), desktop (14px)
+                    const isMobile = window.innerWidth < 768; 
+                    const responsiveFontSize = isMobile ? 16 : 14; 
 
-                    // Options for the text itself
                     const textDrawOptions = {
                         backgroundColor: 'rgba(0, 0, 0, 0.65)',
                         fontColor: 'white',
-                        fontSize: responsiveFontSize, // Use the responsive font size
+                        fontSize: responsiveFontSize, 
                         padding: 5
                     };
                     
