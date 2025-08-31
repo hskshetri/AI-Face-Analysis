@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Face Analysis</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Using a stable jsdelivr CDN for face-api.js -->
+    <script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            /* Default for mobile/tablet to prevent scrolling */
+            overflow: hidden; 
+        }
+
+        /* On desktop devices (1024px and wider), allow scrolling */
+        @media (min-width: 1024px) {
+            body {
+                overflow: auto;
+            }
+        }
+
+        #video-container {
+            position: relative;
+            width: 100%;
+            max-width: 960px;
+            aspect-ratio: 16 / 9;
+            border-radius: 0.75rem;
+            overflow: hidden;
+            margin-left: auto;
+            margin-right: auto;
+        }
+        video, canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+        /* Flip the video feed horizontally for a mirror effect */
+        video {
+            transform: scaleX(-1);
+        }
+        canvas {
+            background-color: transparent;
+        }
+        #loader {
+            border: 5px solid #374151; /* gray-700 */
+            border-top: 5px solid #3b82f6; /* blue-500 */
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body class="bg-gray-900 text-white flex flex-col items-center justify-center min-h-screen p-4">
+
+    <div class="w-full max-w-5xl text-center mb-6">
+        <h1 class="text-4xl md:text-5xl font-bold text-white">Advanced AI Face Analysis</h1>
+        <p class="text-gray-400 mt-2 text-base md:text-lg">Estimates age, gender, and nuanced facial expressions in real-time.</p>
+    </div>
+
+    <div id="start-container" class="w-full max-w-5xl text-center">
+        <button id="start-button" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-6 rounded-lg text-lg transition-transform duration-200 ease-in-out hover:scale-105 shadow-lg">
+            Start Analysis
+        </button>
+        <div class="mt-8 p-4 bg-yellow-900/30 border border-yellow-700 text-yellow-300 rounded-lg max-w-3xl mx-auto text-center">
+            <p class="font-semibold">Disclaimer</p>
+            <p class="text-sm">This tool provides estimations for entertainment purposes only. AI predictions can have inaccuracies and biases. No video data is recorded or stored.</p>
+        </div>
+    </div>
+
+    <div id="loading-container" class="w-full max-w-5xl text-center flex-col items-center justify-center hidden">
+        <div id="loader"></div>
+        <p id="loading-message" class="text-gray-400 mt-4">Loading AI models...</p>
+    </div>
+
+    <div id="app-container" class="w-full hidden">
+        <div id="video-container" class="bg-gray-800 shadow-2xl">
+            <video id="video" autoplay muted playsinline></video>
+            <canvas id="canvas"></canvas>
+        </div>
+        <div class="mt-4 p-4 bg-yellow-900/30 border border-yellow-700 text-yellow-300 rounded-lg max-w-3xl mx-auto text-center">
+             <p class="font-semibold">Disclaimer</p>
+            <p class="text-sm">This tool provides estimations for entertainment purposes only. AI predictions can have inaccuracies and biases. No video data is recorded or stored.</p>
+        </div>
+    </div>
+
+    <script>
+        const video = document.getElementById('video');
+        const canvas = document.getElementById('canvas');
+        const startContainer = document.getElementById('start-container');
+        const startButton = document.getElementById('start-button');
+        const loadingContainer = document.getElementById('loading-container');
+        const loadingMessage = document.getElementById('loading-message');
+        const appContainer = document.getElementById('app-container');
+
+        const faceHistories = new Map();
+        const lockedDetections = new Map();
+        const AGE_HISTORY_LENGTH = 10; // Number of frames to average age over before locking
+        const DETECTION_INTERVAL = 150; // Milliseconds between detections
+
+        async function loadModels() {
+            const MODEL_URL = 'https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@0.22.2/weights';
+            try {
+                loadingMessage.textContent = 'Loading Face Detector...';
+                await faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL);
+                loadingMessage.textContent = 'Loading Face Landmarks...';
+                await faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL);
+                loadingMessage.textContent = 'Loading Expression Model...';
+                await faceapi.nets.faceExpressionNet.loadFromUri(MODEL_URL);
+                loadingMessage.textContent = 'Loading Age & Gender Model...';
+                await faceapi.nets.ageGenderNet.loadFromUri(MODEL_URL);
+            } catch (error) {
+                console.error("Error loading models:", error);
+                loadingMessage.textContent = 'Failed to load AI models. Please refresh the page.';
+                document.getElementById('loader').style.display = 'none';
+                throw new Error("Model loading failed");
+            }
+        }
+
+        function getFaceHistory(faceId) {
+            if (!faceHistories.has(faceId)) {
+                faceHistories.set(faceId, {
+                    age: [],
+                    neutral: null,
+                });
+            }
+            return faceHistories.get(faceId);
+        }
+
+        function getSmoothedAge(history, newAge) {
+            history.age.push(newAge);
+            if (history.age.length > AGE_HISTORY_LENGTH) {
+                history.age.shift();
+            }
+            const sum = history.age.reduce((total, age) => total + age, 0);
+            return Math.round(sum / history.age.length);
+        }
+
+        // --- REVERTED --- Returns the primary expression.
+        function getPrimaryExpression(expressions) {
+            if (!expressions) return 'Expression: N/A';
+            const sorted = Object.entries(expressions).sort(([, a], [, b]) => b - a);
+            const capitalize = (s) => s.charAt(0).toUpperCase() + s.slice(1);
+            return `Expression: ${capitalize(sorted[0][0])}`;
+        }
+        
+        // This advanced function refines expression detection using facial landmark geometry.
+        // It helps detect subtle expressions the base model might otherwise classify as neutral.
+        function refineExpressions(expressions, landmarks, history) {
+            if (!landmarks || landmarks.positions.length !== 68) {
+                return expressions;
+            }
+
+            const dist = (p1, p2) => Math.hypot(p1.x - p2.x, p1.y - p2.y);
+            const primaryExpression = Object.keys(expressions).reduce((a, b) => expressions[a] > expressions[b] ? a : b);
+
+            // Establish a baseline "neutral" face geometry when first detected
+            if (primaryExpression === 'neutral' && history.neutral === null) {
+                history.neutral = {
+                    eyebrowDist: dist(landmarks.positions[21], landmarks.positions[22]),
+                    eyeToEyebrowDist: ((landmarks.positions[38].y - landmarks.positions[20].y) + (landmarks.positions[43].y - landmarks.positions[25].y)) / 2,
+                    lipDist: landmarks.positions[66].y - landmarks.positions[62].y,
+                    noseBridgeHeight: ((landmarks.positions[39].y + landmarks.positions[42].y) / 2) - landmarks.positions[29].y,
+                    eyeAspectRatio: (((dist(landmarks.positions[37], landmarks.positions[41]) + dist(landmarks.positions[38], landmarks.positions[40])) / 2) / dist(landmarks.positions[36], landmarks.positions[39]) + ((dist(landmarks.positions[43], landmarks.positions[47]) + dist(landmarks.positions[44], landmarks.positions[46])) / 2) / dist(landmarks.positions[42], landmarks.positions[45])) / 2,
+                    mouthAspectRatio: dist(landmarks.positions[60], landmarks.positions[64]) / dist(landmarks.positions[48], landmarks.positions[54]),
+                    lipCornerPull: (landmarks.positions[48].y + landmarks.positions[54].y) / 2 - (landmarks.positions[51].y),
+                    innerEyebrowRaise: ((landmarks.positions[17].y + landmarks.positions[26].y)/2) - ((landmarks.positions[21].y + landmarks.positions[22].y)/2),
+                    upperLipToNoseDist: landmarks.positions[33].y - landmarks.positions[51].y,
+                };
+            }
+            if (history.neutral === null) return expressions;
+
+            // Define geometric cues for different emotions based on deviations from neutral
+            const cues = {
+                pinchedEyebrows: dist(landmarks.positions[21], landmarks.positions[22]) < history.neutral.eyebrowDist * 0.90,
+                loweredEyebrows: ((landmarks.positions[38].y - landmarks.positions[20].y) + (landmarks.positions[43].y - landmarks.positions[25].y)) / 2 < history.neutral.eyeToEyebrowDist * 0.85,
+                tightenedLips: (landmarks.positions[66].y - landmarks.positions[62].y) < history.neutral.lipDist * 0.6,
+                wrinkledNose: ((landmarks.positions[39].y + landmarks.positions[42].y) / 2) - landmarks.positions[29].y > history.neutral.noseBridgeHeight * 1.20,
+                raisedUpperLip: (landmarks.positions[33].y - landmarks.positions[51].y) < history.neutral.upperLipToNoseDist * 0.7,
+                wideEyes: (((dist(landmarks.positions[37], landmarks.positions[41]) + dist(landmarks.positions[38], landmarks.positions[40])) / 2) / dist(landmarks.positions[36], landmarks.positions[39]) + ((dist(landmarks.positions[43], landmarks.positions[47]) + dist(landmarks.positions[44], landmarks.positions[46])) / 2) / dist(landmarks.positions[42], landmarks.positions[45])) / 2 > history.neutral.eyeAspectRatio * 1.25,
+                raisedEyebrows: ((landmarks.positions[38].y - landmarks.positions[20].y) + (landmarks.positions[43].y - landmarks.positions[25].y)) / 2 > history.neutral.eyeToEyebrowDist * 1.10,
+                smiling: dist(landmarks.positions[60], landmarks.positions[64]) / dist(landmarks.positions[48], landmarks.positions[54]) > history.neutral.mouthAspectRatio * 1.4,
+                downturnedLipCorners: (landmarks.positions[48].y + landmarks.positions[54].y) / 2 - (landmarks.positions[51].y) < history.neutral.lipCornerPull * 0.9,
+                raisedInnerEyebrows: ((landmarks.positions[17].y + landmarks.positions[26].y)/2) - ((landmarks.positions[21].y + landmarks.positions[22].y)/2) > history.neutral.innerEyebrowRaise * 1.15,
+            };
+
+            let refinedExpressions = { ...expressions };
+            
+            // Boost expression scores based on detected geometric cues
+            if (cues.pinchedEyebrows) refinedExpressions.angry = Math.min(1, refinedExpressions.angry + 0.3);
+            if (cues.loweredEyebrows) refinedExpressions.angry = Math.min(1, refinedExpressions.angry + 0.3);
+            if (cues.tightenedLips) refinedExpressions.angry = Math.min(1, refinedExpressions.angry + 0.3);
+            if (cues.wrinkledNose) refinedExpressions.disgusted = Math.min(1, refinedExpressions.disgusted + 0.4);
+            if (cues.raisedUpperLip) refinedExpressions.disgusted = Math.min(1, refinedExpressions.disgusted + 0.4);
+            if (cues.wideEyes && cues.raisedEyebrows) refinedExpressions.surprised = Math.min(1, refinedExpressions.surprised + 0.5);
+            else if (cues.wideEyes && !cues.raisedEyebrows) refinedExpressions.fearful = Math.min(1, refinedExpressions.fearful + 0.5);
+            if (cues.smiling) refinedExpressions.happy = Math.min(1, refinedExpressions.happy + 0.5);
+            if (cues.downturnedLipCorners && cues.raisedInnerEyebrows) refinedExpressions.sad = Math.min(1, refinedExpressions.sad + 0.5);
+            
+            return refinedExpressions;
+        }
+
+        function startFaceDetection() {
+            loadingContainer.classList.add('hidden');
+            appContainer.classList.remove('hidden');
+
+            const displaySize = { width: video.clientWidth, height: video.clientHeight };
+            faceapi.matchDimensions(canvas, displaySize);
+
+            setInterval(async () => {
+                if (video.paused || video.ended || !faceapi.nets.tinyFaceDetector.params) return;
+                
+                const detections = await faceapi.detectAllFaces(video, new faceapi.TinyFaceDetectorOptions())
+                    .withFaceLandmarks()
+                    .withAgeAndGender()
+                    .withFaceExpressions();
+
+                const context = canvas.getContext('2d');
+                context.clearRect(0, 0, canvas.width, canvas.height);
+
+                const resizedDetections = faceapi.resizeResults(detections, displaySize);
+                
+                // Naive tracking: remove data for faces that are no longer detected
+                const currentFaceIds = new Set(resizedDetections.map((d, i) => i));
+                for (const faceId of faceHistories.keys()) {
+                    if (!currentFaceIds.has(faceId)) {
+                        faceHistories.delete(faceId);
+                        lockedDetections.delete(faceId); 
+                    }
+                }
+
+                resizedDetections.forEach((detection, i) => {
+                    const history = getFaceHistory(i);
+                    const { detection: faceDetection, age, gender, landmarks } = detection;
+                    
+                    let formattedAge;
+                    let formattedGender;
+
+                    // Lock age and gender after a few frames for stability
+                    if (lockedDetections.has(i)) {
+                        const lockedData = lockedDetections.get(i);
+                        formattedAge = lockedData.age;
+                        formattedGender = lockedData.gender;
+                    } else {
+                        const smoothedAge = getSmoothedAge(history, age);
+                        const ageRangeStart = Math.max(0, smoothedAge - 1);
+                        const ageRangeEnd = smoothedAge + 1; 
+                        formattedAge = `${ageRangeStart}-${ageRangeEnd} years old`;
+                        formattedGender = gender.charAt(0).toUpperCase() + gender.slice(1);
+                        
+                        if (history.age.length >= AGE_HISTORY_LENGTH) {
+                            lockedDetections.set(i, { age: formattedAge, gender: formattedGender });
+                        }
+                    }
+
+                    const refined = refineExpressions(detection.expressions, landmarks, history);
+                    const expressionText = getPrimaryExpression(refined);
+                    
+                    // --- REVERTED --- Text content and drawing logic
+                    const drawText = [
+                        `Object: Human`,
+                        `Gender: ${formattedGender}`,
+                        `Age: ${formattedAge}`,
+                        expressionText
+                    ];
+                    
+                    const box = faceDetection.box;
+                    // Mirror the x-coordinate to match the flipped video feed
+                    const mirroredX = canvas.width - box.x - box.width;
+                    
+                    const drawOptions = {
+                        boxColor: 'rgba(59, 130, 246, 0.8)',
+                        textColor: 'white',
+                        lineWidth: 2,
+                    };
+
+                    const mirroredBox = new faceapi.Box({ x: mirroredX, y: box.y, width: box.width, height: box.height });
+                    new faceapi.draw.DrawBox(mirroredBox, drawOptions).draw(canvas);
+                    
+                    const textAnchor = { x: mirroredX, y: box.y - 10 };
+                    new faceapi.draw.DrawTextField(drawText, textAnchor, drawOptions).draw(canvas);
+                });
+
+            }, DETECTION_INTERVAL);
+        }
+
+        async function startWebcam() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { facingMode: 'user' },
+                    audio: false 
+                });
+                video.srcObject = stream;
+                video.onloadedmetadata = () => {
+                    video.play();
+                    startFaceDetection();
+                };
+            } catch (err) {
+                console.error("Error accessing webcam:", err);
+                loadingMessage.innerHTML = `Error: Could not access camera.<br>Please grant permission and refresh.`;
+                document.getElementById('loader').style.display = 'none';
+            }
+        }
+        
+        async function main() {
+            try {
+                await loadModels();
+                await startWebcam();
+            } catch (error) {
+                console.error("Initialization failed:", error);
+            }
+        }
+
+        startButton.addEventListener('click', () => {
+            startContainer.classList.add('hidden');
+            loadingContainer.classList.remove('hidden');
+            loadingContainer.classList.add('flex');
+            main();
+        });
+
+    </script>
+</body>
+</html>
+
+
