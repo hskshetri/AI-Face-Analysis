@@ -69,7 +69,7 @@
         }
     </style>
 </head>
-<body class="bg-gray-900 text-white flex flex-col items-center justify-center min-h-screen p-2 lg:p-4">
+<body class="bg-gray-900 text-white flex flex-col items-center justify-start min-h-screen p-2 md:p-4 lg:p-4 pt-8 md:pt-4">
 
     <div class="w-full max-w-5xl text-center mb-6">
         <h1 class="text-4xl md:text-5xl font-bold text-white">Advanced AI Face Analysis</h1>
@@ -302,9 +302,9 @@
                     // Position text inside the top-left corner, matching the screenshot
                     const textAnchor = { x: mirroredX, y: box.y };
                     
-                    // ** NEW: Make font size responsive **
+                    // UPDATED: Adjusted responsive font size for mobile
                     const isMobile = window.innerWidth < 768; // 768px is a common tablet breakpoint
-                    const responsiveFontSize = isMobile ? 18 : 14; // Larger font for mobile, smaller for desktop
+                    const responsiveFontSize = isMobile ? 16 : 14; // Smaller font for mobile (16px), desktop (14px)
 
                     // Options for the text itself
                     const textDrawOptions = {
