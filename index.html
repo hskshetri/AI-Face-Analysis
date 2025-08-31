@@ -101,6 +101,12 @@
             <p class="text-sm">This tool provides estimations for entertainment purposes only. AI predictions can have inaccuracies and biases. No video data is recorded or stored.</p>
         </div>
     </div>
+    
+    <footer class="w-full text-center py-6 mt-auto">
+        <p class="text-gray-500 text-sm">
+            © 2025 AI Face Analysis. Designed & Built by Harsh Singh Kshetrimayum. All Rights Reserved.
+        </p>
+    </footer>
 
     <script>
         const video = document.getElementById('video');
@@ -218,7 +224,7 @@
             if (cues.wideEyes && cues.raisedEyebrows) refinedExpressions.surprised = Math.min(1, refinedExpressions.surprised + 0.5);
             else if (cues.wideEyes && !cues.raisedEyebrows) refinedExpressions.fearful = Math.min(1, refinedExpressions.fearful + 0.5);
 
-            if (cues.smiling) refinedExpressions.happy = Math.min(1, refinedExpressions.expressions.happy + 0.5); // Fixed typo from 'expressions.happy' to 'happy'
+            if (cues.smiling) refinedExpressions.happy = Math.min(1, refinedExpressions.happy + 0.5);
 
             if (cues.downturnedLipCorners && cues.raisedInnerEyebrows) refinedExpressions.sad = Math.min(1, refinedExpressions.sad + 0.5);
             
@@ -290,14 +296,7 @@
                     const box = faceDetection.box;
                     const mirroredX = canvas.width - box.x - box.width;
                     
-                    // Options for the main blue bounding box (now unused for drawing, but kept for reference if needed)
-                    const boxDrawOptions = {
-                        boxColor: 'rgba(59, 130, 246, 0.8)',
-                        lineWidth: 3 
-                    };
-
                     const mirroredBox = new faceapi.Box({ x: mirroredX, y: box.y, width: box.width, height: box.height });
-                    // new faceapi.draw.DrawBox(mirroredBox, boxDrawOptions).draw(canvas); // Line to remove/comment out
                     
                     // Position text inside the top-left corner
                     const textAnchor = { x: mirroredX, y: box.y };
