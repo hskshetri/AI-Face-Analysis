@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AI Face Analysis</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Using a stable jsdelivr CDN for face-api.js -->
+    <!-- Using a stable jsdelivr CDN with defer for reliable loading -->
     <script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -23,17 +23,23 @@
                 overflow: auto;
             }
         }
-
         #video-container {
             position: relative;
             width: 100%;
             max-width: 960px;
-            aspect-ratio: 16 / 9;
+            aspect-ratio: 4 / 3;
             border-radius: 0.75rem;
             overflow: hidden;
             margin-left: auto;
             margin-right: auto;
         }
+        
+        @media (min-width: 768px) {
+            #video-container {
+                aspect-ratio: 16 / 9;
+            }
+        }
+
         video, canvas {
             position: absolute;
             top: 0;
@@ -42,7 +48,6 @@
             height: 100%;
             object-fit: cover;
         }
-        /* Flip the video feed horizontally for a mirror effect */
         video {
             transform: scaleX(-1);
         }
@@ -63,7 +68,7 @@
         }
     </style>
 </head>
-<body class="bg-gray-900 text-white flex flex-col items-center justify-center min-h-screen p-4">
+<body class="bg-gray-900 text-white flex flex-col items-center justify-center min-h-screen p-2 lg:p-4">
 
     <div class="w-full max-w-5xl text-center mb-6">
         <h1 class="text-4xl md:text-5xl font-bold text-white">Advanced AI Face Analysis</h1>
@@ -107,8 +112,8 @@
 
         const faceHistories = new Map();
         const lockedDetections = new Map();
-        const AGE_HISTORY_LENGTH = 10; // Number of frames to average age over before locking
-        const DETECTION_INTERVAL = 150; // Milliseconds between detections
+        const AGE_HISTORY_LENGTH = 10; 
+        const DETECTION_INTERVAL = 150;
 
         async function loadModels() {
             const MODEL_URL = 'https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@0.22.2/weights';
@@ -148,7 +153,6 @@
             return Math.round(sum / history.age.length);
         }
 
-        // --- REVERTED --- Returns the primary expression.
         function getPrimaryExpression(expressions) {
             if (!expressions) return 'Expression: N/A';
             const sorted = Object.entries(expressions).sort(([, a], [, b]) => b - a);
@@ -156,8 +160,6 @@
             return `Expression: ${capitalize(sorted[0][0])}`;
         }
         
-        // This advanced function refines expression detection using facial landmark geometry.
-        // It helps detect subtle expressions the base model might otherwise classify as neutral.
         function refineExpressions(expressions, landmarks, history) {
             if (!landmarks || landmarks.positions.length !== 68) {
                 return expressions;
@@ -166,7 +168,6 @@
             const dist = (p1, p2) => Math.hypot(p1.x - p2.x, p1.y - p2.y);
             const primaryExpression = Object.keys(expressions).reduce((a, b) => expressions[a] > expressions[b] ? a : b);
 
-            // Establish a baseline "neutral" face geometry when first detected
             if (primaryExpression === 'neutral' && history.neutral === null) {
                 history.neutral = {
                     eyebrowDist: dist(landmarks.positions[21], landmarks.positions[22]),
@@ -182,31 +183,39 @@
             }
             if (history.neutral === null) return expressions;
 
-            // Define geometric cues for different emotions based on deviations from neutral
             const cues = {
+                // Anger Cues (more forgiving thresholds)
                 pinchedEyebrows: dist(landmarks.positions[21], landmarks.positions[22]) < history.neutral.eyebrowDist * 0.90,
                 loweredEyebrows: ((landmarks.positions[38].y - landmarks.positions[20].y) + (landmarks.positions[43].y - landmarks.positions[25].y)) / 2 < history.neutral.eyeToEyebrowDist * 0.85,
                 tightenedLips: (landmarks.positions[66].y - landmarks.positions[62].y) < history.neutral.lipDist * 0.6,
+                // Disgust Cues
                 wrinkledNose: ((landmarks.positions[39].y + landmarks.positions[42].y) / 2) - landmarks.positions[29].y > history.neutral.noseBridgeHeight * 1.20,
                 raisedUpperLip: (landmarks.positions[33].y - landmarks.positions[51].y) < history.neutral.upperLipToNoseDist * 0.7,
+                // Fear/Surprise Cues
                 wideEyes: (((dist(landmarks.positions[37], landmarks.positions[41]) + dist(landmarks.positions[38], landmarks.positions[40])) / 2) / dist(landmarks.positions[36], landmarks.positions[39]) + ((dist(landmarks.positions[43], landmarks.positions[47]) + dist(landmarks.positions[44], landmarks.positions[46])) / 2) / dist(landmarks.positions[42], landmarks.positions[45])) / 2 > history.neutral.eyeAspectRatio * 1.25,
                 raisedEyebrows: ((landmarks.positions[38].y - landmarks.positions[20].y) + (landmarks.positions[43].y - landmarks.positions[25].y)) / 2 > history.neutral.eyeToEyebrowDist * 1.10,
+                // Happy Cue
                 smiling: dist(landmarks.positions[60], landmarks.positions[64]) / dist(landmarks.positions[48], landmarks.positions[54]) > history.neutral.mouthAspectRatio * 1.4,
+                // Sad Cues
                 downturnedLipCorners: (landmarks.positions[48].y + landmarks.positions[54].y) / 2 - (landmarks.positions[51].y) < history.neutral.lipCornerPull * 0.9,
                 raisedInnerEyebrows: ((landmarks.positions[17].y + landmarks.positions[26].y)/2) - ((landmarks.positions[21].y + landmarks.positions[22].y)/2) > history.neutral.innerEyebrowRaise * 1.15,
             };
 
             let refinedExpressions = { ...expressions };
             
-            // Boost expression scores based on detected geometric cues
+            // Granular boosting system
             if (cues.pinchedEyebrows) refinedExpressions.angry = Math.min(1, refinedExpressions.angry + 0.3);
             if (cues.loweredEyebrows) refinedExpressions.angry = Math.min(1, refinedExpressions.angry + 0.3);
             if (cues.tightenedLips) refinedExpressions.angry = Math.min(1, refinedExpressions.angry + 0.3);
+
             if (cues.wrinkledNose) refinedExpressions.disgusted = Math.min(1, refinedExpressions.disgusted + 0.4);
             if (cues.raisedUpperLip) refinedExpressions.disgusted = Math.min(1, refinedExpressions.disgusted + 0.4);
+            
             if (cues.wideEyes && cues.raisedEyebrows) refinedExpressions.surprised = Math.min(1, refinedExpressions.surprised + 0.5);
             else if (cues.wideEyes && !cues.raisedEyebrows) refinedExpressions.fearful = Math.min(1, refinedExpressions.fearful + 0.5);
+
             if (cues.smiling) refinedExpressions.happy = Math.min(1, refinedExpressions.happy + 0.5);
+
             if (cues.downturnedLipCorners && cues.raisedInnerEyebrows) refinedExpressions.sad = Math.min(1, refinedExpressions.sad + 0.5);
             
             return refinedExpressions;
@@ -232,7 +241,6 @@
 
                 const resizedDetections = faceapi.resizeResults(detections, displaySize);
                 
-                // Naive tracking: remove data for faces that are no longer detected
                 const currentFaceIds = new Set(resizedDetections.map((d, i) => i));
                 for (const faceId of faceHistories.keys()) {
                     if (!currentFaceIds.has(faceId)) {
@@ -248,7 +256,6 @@
                     let formattedAge;
                     let formattedGender;
 
-                    // Lock age and gender after a few frames for stability
                     if (lockedDetections.has(i)) {
                         const lockedData = lockedDetections.get(i);
                         formattedAge = lockedData.age;
@@ -267,8 +274,7 @@
 
                     const refined = refineExpressions(detection.expressions, landmarks, history);
                     const expressionText = getPrimaryExpression(refined);
-                    
-                    // --- REVERTED --- Text content and drawing logic
+
                     const drawText = [
                         `Object: Human`,
                         `Gender: ${formattedGender}`,
@@ -277,7 +283,6 @@
                     ];
                     
                     const box = faceDetection.box;
-                    // Mirror the x-coordinate to match the flipped video feed
                     const mirroredX = canvas.width - box.x - box.width;
                     
                     const drawOptions = {
@@ -333,5 +338,3 @@
     </script>
 </body>
 </html>
-
-
