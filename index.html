@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AI Face Analysis</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Using a stable jsdelivr CDN with defer for reliable loading -->
     <script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -27,6 +26,7 @@
             position: relative;
             width: 100%;
             max-width: 960px;
+            /* Taller aspect ratio for mobile by default to make it bigger */
             aspect-ratio: 4 / 3;
             border-radius: 0.75rem;
             overflow: hidden;
@@ -34,6 +34,7 @@
             margin-right: auto;
         }
         
+        /* Switch back to widescreen for tablets and larger devices */
         @media (min-width: 768px) {
             #video-container {
                 aspect-ratio: 16 / 9;
@@ -112,10 +113,13 @@
 
         const faceHistories = new Map();
         const lockedDetections = new Map();
-        const AGE_HISTORY_LENGTH = 10; 
-        const DETECTION_INTERVAL = 150;
+        const AGE_HISTORY_LENGTH = 10; // Shortened for faster locking
+        
+        // PERFORMANCE FIX 1: Increased interval to reduce CPU load on mobile devices.
+        const DETECTION_INTERVAL = 400;
 
         async function loadModels() {
+            // ERROR FIX: Switched to a more reliable jsdelivr npm CDN link to resolve fetch errors.
             const MODEL_URL = 'https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@0.22.2/weights';
             try {
                 loadingMessage.textContent = 'Loading Face Detector...';
@@ -231,7 +235,8 @@
             setInterval(async () => {
                 if (video.paused || video.ended || !faceapi.nets.tinyFaceDetector.params) return;
                 
-                const detections = await faceapi.detectAllFaces(video, new faceapi.TinyFaceDetectorOptions())
+                // PERFORMANCE FIX 2: Using a smaller input size for faster processing.
+                const detections = await faceapi.detectAllFaces(video, new faceapi.TinyFaceDetectorOptions({ inputSize: 320 }))
                     .withFaceLandmarks()
                     .withAgeAndGender()
                     .withFaceExpressions();
@@ -285,17 +290,31 @@
                     const box = faceDetection.box;
                     const mirroredX = canvas.width - box.x - box.width;
                     
-                    const drawOptions = {
+                    // Options for the main blue bounding box
+                    const boxDrawOptions = {
                         boxColor: 'rgba(59, 130, 246, 0.8)',
-                        textColor: 'white',
-                        lineWidth: 2,
+                        lineWidth: 3 // Made the box slightly thicker
                     };
 
                     const mirroredBox = new faceapi.Box({ x: mirroredX, y: box.y, width: box.width, height: box.height });
-                    new faceapi.draw.DrawBox(mirroredBox, drawOptions).draw(canvas);
+                    new faceapi.draw.DrawBox(mirroredBox, boxDrawOptions).draw(canvas);
                     
-                    const textAnchor = { x: mirroredX, y: box.y - 10 };
-                    new faceapi.draw.DrawTextField(drawText, textAnchor, drawOptions).draw(canvas);
+                    // Position text inside the top-left corner, matching the screenshot
+                    const textAnchor = { x: mirroredX, y: box.y };
+                    
+                    // ** NEW: Make font size responsive **
+                    const isMobile = window.innerWidth < 768; // 768px is a common tablet breakpoint
+                    const responsiveFontSize = isMobile ? 18 : 14; // Larger font for mobile, smaller for desktop
+
+                    // Options for the text itself
+                    const textDrawOptions = {
+                        backgroundColor: 'rgba(0, 0, 0, 0.65)',
+                        fontColor: 'white',
+                        fontSize: responsiveFontSize, // Use the responsive font size
+                        padding: 5
+                    };
+                    
+                    new faceapi.draw.DrawTextField(drawText, textAnchor, textDrawOptions).draw(canvas);
                 });
 
             }, DETECTION_INTERVAL);
